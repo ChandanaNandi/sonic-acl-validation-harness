@@ -211,6 +211,71 @@ def asic_db_observe(report: ValidationReport) -> None:
         report.add("ASIC_DB SAI ACL objects", None, "not visible or not materialized in this VS image")
 
 
+def strip_sai_mask(value: str | None) -> str | None:
+    """Drop the `&mask:0x...` suffix SAI uses for ternary ACL match fields."""
+
+    if value is None:
+        return None
+    return value.split("&mask:", 1)[0]
+
+
+def expected_sai_action(scenario: AclScenario) -> str:
+    return f"SAI_PACKET_ACTION_{scenario.packet_action}"
+
+
+def evaluate_asic_acl_entry_attrs(
+    scenario: AclScenario, attrs: dict[str, str]
+) -> ValidationReport:
+    """Pure check of one ASIC_DB ACL_ENTRY's SAI attributes against the scenario.
+
+    Tolerates the `value&mask:0xff` shape SAI emits for ternary fields by
+    stripping the mask before comparing.
+    """
+
+    report = ValidationReport()
+
+    priority = attrs.get("SAI_ACL_ENTRY_ATTR_PRIORITY")
+    l4_raw = attrs.get("SAI_ACL_ENTRY_ATTR_FIELD_L4_DST_PORT")
+    proto_raw = attrs.get("SAI_ACL_ENTRY_ATTR_FIELD_IP_PROTOCOL")
+    action = attrs.get("SAI_ACL_ENTRY_ATTR_ACTION_PACKET_ACTION")
+
+    report.add("SAI priority", priority == scenario.priority, priority or "missing")
+    report.add(
+        "SAI L4_DST_PORT",
+        strip_sai_mask(l4_raw) == scenario.l4_dst_port,
+        l4_raw or "missing",
+    )
+    report.add(
+        "SAI IP_PROTOCOL",
+        strip_sai_mask(proto_raw) == scenario.protocol,
+        proto_raw or "missing",
+    )
+    report.add(
+        "SAI PACKET_ACTION",
+        action == expected_sai_action(scenario),
+        action or "missing",
+    )
+    return report
+
+
+def compute_asic_entry_delta(pre: list[str], post: list[str]) -> list[str]:
+    """ACL_ENTRY keys present after apply but not before. Order-preserving."""
+
+    seen = set(pre)
+    return [key for key in post if key not in seen]
+
+
+def find_scenario_entry(
+    scenario: AclScenario, candidates: dict[str, dict[str, str]]
+) -> str | None:
+    """Return the candidate key whose attrs match the scenario fingerprint."""
+
+    for key, attrs in candidates.items():
+        if evaluate_asic_acl_entry_attrs(scenario, attrs).passed:
+            return key
+    return None
+
+
 def validate_acl_state(scenario: AclScenario) -> ValidationReport:
     report = config_db_validate(scenario)
     app_db_observe(scenario, report)
