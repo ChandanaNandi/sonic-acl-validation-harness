@@ -50,6 +50,19 @@ python3 acl/acl_harness.py status
 python3 acl/acl_harness.py cleanup
 ```
 
+End-to-end flow with ASIC_DB delta validation (apply -> validate -> cleanup
+in one command):
+
+```bash
+python3 -m acl.acl_harness flow
+```
+
+`flow` captures the baseline ACL_ENTRY keys in ASIC_DB before applying, then
+identifies the scenario's entry by matching SAI attributes (priority,
+`L4_DST_PORT`, `IP_PROTOCOL`, `PACKET_ACTION`), and finally verifies that
+*that specific* entry disappears after cleanup. Pre-existing ACL table objects
+are left alone.
+
 To run the deterministic tests without docker:
 
 ```bash
