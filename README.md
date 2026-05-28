@@ -77,6 +77,10 @@ python3 -m acl.acl_harness validate --dst-ip 192.0.2.10 --iface veth0
 
 ## Expected Output Shape
 
+`validate` output against `docker-sonic-vs-fixed:latest` after `apply`. APP_DB
+ACL state is not visible in this VS image and is reported as `skip`. ASIC_DB
+SAI ACL objects are visible and pass:
+
 ```text
 CONFIG_DB ACL_TABLE: pass: present
 CONFIG_DB ACL_RULE drop_https: pass: present
@@ -88,11 +92,40 @@ IP_PROTOCOL: pass: 6
 L4_DST_PORT: pass: 443
 PACKET_ACTION: pass: DROP
 APP_DB ACL state: skip: not visible in this VS image
-ASIC_DB SAI ACL objects: skip: not visible or not materialized in this VS image
+ASIC_DB SAI ACL objects: pass: tables=4 entries=1
 packet tcp/443: skip: requires --dst-ip and --iface for this VS topology
 packet tcp/80: skip: requires --dst-ip and --iface for this VS topology
 verdict: pass
 ```
+
+`flow` output, which adds ASIC_DB delta validation (identifies the scenario's
+ACL entry by SAI attribute fingerprint and verifies that specific entry
+disappears after cleanup):
+
+```text
+baseline ACL_ENTRY keys: 0
+apply: pass
+CONFIG_DB ACL_TABLE: pass: present
+CONFIG_DB ACL_RULE drop_https: pass: present
+port_binding: pass: Ethernet4
+stage: pass: INGRESS
+type: pass: L3
+priority: pass: 100
+IP_PROTOCOL: pass: 6
+L4_DST_PORT: pass: 443
+PACKET_ACTION: pass: DROP
+ASIC_DB SAI ACL entry delta: pass: ASIC_STATE:SAI_OBJECT_TYPE_ACL_ENTRY:oid:0x80000000005e8
+  SAI_ACL_ENTRY_ATTR_PRIORITY: 100
+  SAI_ACL_ENTRY_ATTR_FIELD_L4_DST_PORT: 443&mask:0xffff
+  SAI_ACL_ENTRY_ATTR_FIELD_IP_PROTOCOL: 6&mask:0xff
+  SAI_ACL_ENTRY_ATTR_ACTION_PACKET_ACTION: SAI_PACKET_ACTION_DROP
+cleanup: pass
+ASIC_DB scenario entry removed: pass
+verdict: pass
+```
+
+This is software-visible SAI object translation in SONiC VS, not proof of
+hardware-backed ASIC enforcement.
 
 ## Helper Scripts
 
